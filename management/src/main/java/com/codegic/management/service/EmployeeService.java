@@ -9,22 +9,24 @@ import com.codegic.management.exception.ResourceNotFoundException;
 import com.codegic.management.repository.DepartmentRepository;
 import com.codegic.management.repository.EmployeeRepository;
 import org.springframework.stereotype.Service;
+
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
     private final DepartmentRepository departmentRepository;
+    private final SalaryAdjustHistoryService historyService;
 
-    // Simple in-memory cache for idempotency (departmentId → last adjustment time)
-    private final Map<Long, LocalDateTime> lastAdjustmentMap = new HashMap<>();
-
-    public EmployeeService(EmployeeRepository employeeRepository, DepartmentRepository departmentRepository) {
+    public EmployeeService(EmployeeRepository employeeRepository,
+                           DepartmentRepository departmentRepository,
+                           SalaryAdjustHistoryService historyService) {
         this.employeeRepository = employeeRepository;
         this.departmentRepository = departmentRepository;
+        this.historyService = historyService;
     }
 
     public EmployeeDTO createEmployee(EmployeeDTO dto) {
@@ -80,13 +82,9 @@ public class EmployeeService {
         Department department = departmentRepository.findById(request.getDepartmentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
 
-        // Idempotency check: block if last adjustment was within 30 min
-        LocalDateTime now = LocalDateTime.now();
-        if (lastAdjustmentMap.containsKey(department.getId())) {
-            LocalDateTime lastTime = lastAdjustmentMap.get(department.getId());
-            if (lastTime.plusMinutes(30).isAfter(now)) {
-                throw new DuplicateAdjustmentException("Salary adjustment already done recently.");
-            }
+        // Idempotency check from DB (30 minutes limit)
+        if (historyService.wasAdjustedRecently(department.getId(), 30)) {
+            throw new DuplicateAdjustmentException("Salary adjustment already done in last 30 minutes.");
         }
 
         List<Employee> employees = employeeRepository.findByDepartmentId(department.getId());
@@ -119,7 +117,9 @@ public class EmployeeService {
         }
 
         employeeRepository.saveAll(employees);
-        lastAdjustmentMap.put(department.getId(), now);
+
+        // Record adjustment in DB
+        historyService.recordAdjustment(department.getId());
 
         return "Salary adjustment completed for department: " + department.getName();
     }
