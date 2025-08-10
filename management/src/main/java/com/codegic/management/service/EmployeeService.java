@@ -21,9 +21,7 @@ public class EmployeeService {
     private final DepartmentRepository departmentRepository;
     private final SalaryAdjustHistoryService historyService;
 
-    public EmployeeService(EmployeeRepository employeeRepository,
-                           DepartmentRepository departmentRepository,
-                           SalaryAdjustHistoryService historyService) {
+    public EmployeeService(EmployeeRepository employeeRepository,DepartmentRepository departmentRepository,SalaryAdjustHistoryService historyService) {
         this.employeeRepository = employeeRepository;
         this.departmentRepository = departmentRepository;
         this.historyService = historyService;
